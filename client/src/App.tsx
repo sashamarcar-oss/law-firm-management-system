@@ -16,8 +16,9 @@ import Testimonials from "./components/Testimonials";
 import WhyChooseUs from "./components/WhyChooseUs";
 import Contact from "./components/Contact";
 import PageTransition from "./components/PageTransition";
+import LawyerAI from "./components/LawyerAI";
 
-import ChatWindow from "./components/chats/ChatWindow";
+
 import MessagePage from "./components/messagingPage";
 import AppointmentPage from "./components/AppointmentsPage";
 import Cases from "./components/LawyerCase";
@@ -94,11 +95,6 @@ const HomePage = () => (
   </>
 );
 
-const AIChatPage = () => (
-  <div className="pt-28 flex justify-center">
-    <ChatWindow />
-  </div>
-);
 
 // ───────── App ─────────
 function App() {
@@ -134,7 +130,7 @@ function App() {
           element={
             <PageTransition>
               <WebsiteLayout>
-                <AIChatPage />
+                <LawyerAI />
               </WebsiteLayout>
             </PageTransition>
           }
@@ -202,16 +198,7 @@ function App() {
           }
         />
 
-        <Route
-          path="/client/chat"
-          element={
-            <PageTransition>
-              <ProtectedRoute allowedRoles={["client"]}>
-                <ChatWindow />
-              </ProtectedRoute>
-            </PageTransition>
-          }
-        />
+    
         <Route
           path="/client/messages"
           element={
