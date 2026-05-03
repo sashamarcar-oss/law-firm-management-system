@@ -1,0 +1,438 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function userDoc(uid) {
+      return /databases/$(database)/documents/users/$(uid);
+    }
+
+    function userExists(uid) {
+      return exists(userDoc(uid));
+    }
+
+    function userData(uid) {
+      return get(userDoc(uid)).data;
+    }
+
+    function userRole(uid) {
+      return userExists(uid) ? userData(uid).role : null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated()
+        && userExists(request.auth.uid)
+        && userRole(request.auth.uid) == "admin";
+    }
+
+    function isLawyer() {
+      return isAuthenticated()
+        && userExists(request.auth.uid)
+        && userRole(request.auth.uid) == "lawyer";
+    }
+
+    function isClient() {
+      return isAuthenticated()
+        && userExists(request.auth.uid)
+        && userRole(request.auth.uid) == "client";
+    }
+
+    function isOwnUserDoc(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function currentUserName() {
+      return isAuthenticated() && userExists(request.auth.uid)
+        ? userData(request.auth.uid).displayName
+        : null;
+    }
+
+    function isAssignedLawyer(data) {
+      return isAuthenticated() && data is map && (
+        (("lawyerId" in data) && data.lawyerId == request.auth.uid) ||
+        (("lawyerName" in data) && data.lawyerName == currentUserName()) ||
+        (("lawyer" in data) && data.lawyer == currentUserName())
+      );
+    }
+
+    function canAccessAppointment(data) {
+      return isAuthenticated() && data is map && (
+        isAdmin() ||
+        (("clientId" in data) && data.clientId == request.auth.uid) ||
+        isAssignedLawyer(data)
+      );
+    }
+
+    function canAccessCase(data) {
+      return isAuthenticated() && data is map && (
+        isAdmin() ||
+        (("clientId" in data) && data.clientId == request.auth.uid) ||
+        (("lawyerId" in data) && data.lawyerId == request.auth.uid)
+      );
+    }
+
+    function isNotificationRecipient(data) {
+      return isAuthenticated() && (
+        (("userId" in data) && data.userId == request.auth.uid) ||
+        (("recipientId" in data) && data.recipientId == request.auth.uid) ||
+        (("recieverId" in data) && data.recieverId == request.auth.uid)
+      );
+    }
+
+    function hasTwoParticipants(data) {
+      return ("participants" in data)
+        && data.participants is list
+        && data.participants.size() == 2;
+    }
+
+    function firstParticipant(data) {
+      return data.participants[0];
+    }
+
+    function secondParticipant(data) {
+      return data.participants[1];
+    }
+
+    function isAllowedConversation(roleA, roleB) {
+      return (
+        roleA in ["admin", "lawyer", "client"] &&
+        roleB in ["admin", "lawyer", "client"] &&
+        (
+          roleA == "admin" ||
+          roleB == "admin" ||
+          (roleA == "lawyer" && roleB == "lawyer") ||
+          (roleA == "lawyer" && roleB == "client") ||
+          (roleA == "client" && roleB == "lawyer")
+        )
+      );
+    }
+
+    function validConversationPair(data) {
+      return hasTwoParticipants(data)
+        && userExists(firstParticipant(data))
+        && userExists(secondParticipant(data))
+        && isAllowedConversation(
+          userRole(firstParticipant(data)),
+          userRole(secondParticipant(data))
+        );
+    }
+
+    function isConversationParticipant(conversationId) {
+      return isAuthenticated()
+        && exists(/databases/$(database)/documents/conversations/$(conversationId))
+        && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.participants;
+    }
+
+    function validAuditLogCreate(data) {
+      return isAuthenticated()
+        && data.keys().hasAll([
+          "action",
+          "details",
+          "performedByUid",
+          "performedBy",
+          "timestamp"
+        ])
+        && data.action is string
+        && data.details is string
+        && data.performedByUid is string
+        && data.performedBy is string
+        && data.timestamp is timestamp
+        && data.performedByUid == request.auth.uid
+        && (
+          data.performedBy == "admin" ||
+          data.performedBy == "lawyer" ||
+          data.performedBy == "client"
+        )
+        && (
+          !("targetId" in data) || data.targetId is string
+        )
+        && (
+          !("targetName" in data) || data.targetName is string
+        )
+        && (
+          !("targetType" in data) || data.targetType is string
+        )
+        && (
+          !("targertId" in data) || data.targertId is string
+        )
+        && (
+          !("targertName" in data) || data.targertName is string
+        )
+        && (
+          !("targertType" in data) || data.targertType is string
+        )
+        && (
+          !("perfomedByUid" in data) || data.perfomedByUid is string
+        );
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if (isOwnUserDoc(userId) || isAdmin())
+        && request.resource.data.keys().hasAll([
+          "createdAt",
+          "email",
+          "lastSeen",
+          "name",
+          "online",
+          "phone",
+          "role"
+        ])
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.email is string
+        && request.resource.data.lastSeen is timestamp
+        && request.resource.data.name is string
+        && request.resource.data.online is bool
+        && request.resource.data.phone is string
+        && request.resource.data.role in ["client", "lawyer", "admin"];
+      allow update: if (isOwnUserDoc(userId) || isAdmin())
+        && request.resource.data.keys().hasAll([
+          "createdAt",
+          "email",
+          "lastSeen",
+          "name",
+          "online",
+          "phone",
+          "role"
+        ])
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.email is string
+        && request.resource.data.lastSeen is timestamp
+        && request.resource.data.name is string
+        && request.resource.data.online is bool
+        && request.resource.data.phone is string
+        && request.resource.data.role in ["client", "lawyer", "admin"];
+      allow delete: if isAdmin();
+    }
+
+    match /appointments/{appointmentId} {
+      allow read: if canAccessAppointment(resource.data);
+
+      allow create: if isAuthenticated()
+        && isClient()
+        && request.resource.data.keys().hasAll([
+          "approvedBy",
+          "clientEmail",
+          "clientId",
+          "clientName",
+          "clientPhone",
+          "createdAt",
+          "date",
+          "lawyer",
+          "lawyerId",
+          "lawyerName",
+          "location"
+        ])
+        && request.resource.data.clientId == request.auth.uid
+        && request.resource.data.approvedBy is string
+        && request.resource.data.clientEmail is string
+        && request.resource.data.clientId is string
+        && request.resource.data.clientName is string
+        && request.resource.data.clientPhone is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.date is timestamp
+        && request.resource.data.lawyer is string
+        && request.resource.data.lawyerId is string
+        && request.resource.data.lawyerName is string
+        && request.resource.data.location is string
+        && (
+          !("notes" in request.resource.data) ||
+          request.resource.data.notes is string
+        );
+
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        (resource.data.clientId == request.auth.uid) ||
+        (("lawyerId" in resource.data) && resource.data.lawyerId == request.auth.uid)
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && (
+          resource.data.clientId == request.auth.uid ||
+          resource.data.clientUid == request.auth.uid
+        )
+      );
+
+      allow create: if isAdmin() || (
+        isAuthenticated() && (
+          request.resource.data.clientId == request.auth.uid ||
+          request.resource.data.clientUid == request.auth.uid
+        )
+      )
+        && request.resource.data.keys().hasAll([
+          "amount",
+          "appointmentId",
+          "case",
+          "checkoutRequestId",
+          "clientEmail",
+          "clientId",
+          "clientName",
+          "createdAt",
+          "currency",
+          "lawyerId",
+          "lawyerName",
+          "merchantRequestId",
+          "message",
+          "method",
+          "paidAt",
+          "paystackReference",
+          "status",
+          "transactionId"
+        ])
+        && request.resource.data.amount is int
+        && request.resource.data.appointmentId is string
+        && request.resource.data.case is string
+        && request.resource.data.checkoutRequestId is string
+        && request.resource.data.clientEmail is string
+        && request.resource.data.clientId is string
+        && request.resource.data.clientName is string
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.currency is string
+        && request.resource.data.lawyerId is string
+        && request.resource.data.lawyerName is string
+        && request.resource.data.merchantRequestId is string
+        && request.resource.data.message is string
+        && request.resource.data.method is string
+        && request.resource.data.paidAt is timestamp
+        && request.resource.data.paystackReference is string
+        && request.resource.data.status is string
+        && request.resource.data.transactionId is string;
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /lawyerSalaries/{salaryId} {
+      allow read: if isAdmin() || (
+        isLawyer() &&
+        resource.data.lawyerId == request.auth.uid
+      );
+      allow create, update, delete: if isAdmin();
+    }
+
+    match /feedback/{feedbackId} {
+      allow create: if isAuthenticated()
+        && isClient()
+        && request.resource.data.clientId == request.auth.uid;
+
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        resource.data.clientId == request.auth.uid
+      );
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /cases/{caseId} {
+      allow read: if canAccessCase(resource.data);
+      allow create: if isAuthenticated();
+      allow update: if isAdmin() || (
+        isLawyer() && resource.data.lawyerId == request.auth.uid
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /conversations/{convId} {
+      allow read: if isAuthenticated() && (
+        isAdmin() ||
+        request.auth.uid in resource.data.participants
+      ) && validConversationPair(resource.data);
+
+      allow create: if isAuthenticated()
+        && request.auth.uid in request.resource.data.participants
+        && validConversationPair(request.resource.data);
+
+      allow update: if isAuthenticated()
+        && request.auth.uid in resource.data.participants
+        && request.resource.data.participants == resource.data.participants
+        && validConversationPair(resource.data);
+
+      allow delete: if isAdmin();
+    }
+
+    match /messages/{messageId} {
+      allow read: if isAuthenticated()
+        && isConversationParticipant(resource.data.conversationId)
+        && validConversationPair(
+          get(/databases/$(database)/documents/conversations/$(resource.data.conversationId)).data
+        );
+
+      allow create: if isAuthenticated()
+        && request.resource.data.senderId == request.auth.uid
+        && isConversationParticipant(request.resource.data.conversationId)
+        && validConversationPair(
+          get(/databases/$(database)/documents/conversations/$(request.resource.data.conversationId)).data
+        );
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAdmin() || (
+        isAuthenticated() && isNotificationRecipient(resource.data)
+      );
+
+      allow create: if isAdmin() || (
+        isAuthenticated()
+        && request.resource.data.keys().hasAll([
+          "createdAt",
+          "message",
+          "read",
+          "title",
+          "type"
+        ])
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.message is string
+        && request.resource.data.read is bool
+        && request.resource.data.title is string
+        && request.resource.data.type is string
+        && (
+          !("senderId" in request.resource.data) ||
+          request.resource.data.senderId == null ||
+          request.resource.data.senderId == request.auth.uid
+        )
+        && (
+          (("recipientId" in request.resource.data) && request.resource.data.recipientId is string) ||
+          (("userId" in request.resource.data) && request.resource.data.userId is string) ||
+          (("recieverId" in request.resource.data) && request.resource.data.recieverId is string)
+        )
+      );
+
+      allow update: if isAdmin() || (
+        isAuthenticated()
+        && isNotificationRecipient(resource.data)
+        && request.resource.data.diff(resource.data).changedKeys().hasOnly(["read"])
+        && request.resource.data.read is bool
+      );
+
+      allow delete: if isAdmin();
+    }
+
+    match /activities/{activityId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if isAdmin();
+    }
+
+    match /auditLogs/{logId} {
+      allow read: if isAdmin();
+      allow create: if validAuditLogCreate(request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    match /invoices/{invoiceId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
