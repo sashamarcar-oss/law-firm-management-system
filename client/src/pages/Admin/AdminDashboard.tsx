@@ -61,13 +61,6 @@ interface Lawyer {
   name: string;
 }
 
-type SidebarItem = {
-  label: string;
-  icon: JSX.Element;
-  active?: boolean;
-  path?: string;
-};
-
 const STATUS_COLORS = {
   Pending: "bg-amber-500/10 text-amber-400 border border-amber-500/30",
   "In Progress": "bg-teal-500/10 text-teal-400 border border-teal-500/30",
