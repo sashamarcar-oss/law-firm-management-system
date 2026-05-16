@@ -8,11 +8,11 @@ export default function About() {
           <div className="lg:col-span-7 space-y-8">
             <div>
               <p className="text-[#d4af37] uppercase tracking-[3px] text-sm font-medium mb-3">
-                MY LAW FIRM
+                ABOUT ALBERT SMITH LAW FIRM
               </p>
               <h2 className="text-5xl lg:text-6xl font-bold text-gray-900 leading-none tracking-tight">
                 Excellence.<br />
-                Integrity.<br />
+                Integrity.GIT<br />
                 Results.
               </h2>
             </div>
